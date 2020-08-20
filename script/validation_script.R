@@ -312,6 +312,14 @@ for(r in 1:n_data){
   
 } # End iteration over the different datasets
 
+### results processing
+
+# construction of the average table
+
+# calculation of the t-test
+
+# Final ouput of this section should be the table 3 of the manuscript
+
 ###########
 
 # Between experiment comparisons
@@ -392,37 +400,57 @@ for(i in 1:4){ # Iteration over the different combination of crop and trait
   
 }
 
+Sys.time()
+
 ### Save genotype BLUEs TS
+
+res_TS <- res
+save(res_TS, file = './results/res_TS.RData')
+
+### results processing
+
+# construction of the average table. You can start from res_TS
+# (!For the moment, it does not contain the result of sc 9. I will add
+# them later)
+
+# calculation of the t-test
+
+# Final ouput of this section should be the table 3 of the manuscript
 
 #######
 
-
-
 # Plots of the genotype BLUEs TS (Figure 2)
 ###########################################
+
+# Vincent does that. In any case, there is already a ploting option integrate
+# in the package function SpaTemHTP_proc
 
 ########
 
 # Assessment of genotyp growth pattern (linear trend fit)
 #########################################################
 
+### Soumya
+
 ########
 
 # Clustering
 ############
+
+### Soumya (Only the results from the manuscript. Wait for choice to keep clustering)
 
 #########
 
 # Determination of optimal time window (OTW)
 ############################################
 
+### Soumya (Only the manuscript results)
+
 ##########
 
 # Gc x TW model
 ###############
 
+### Soumya (Only the manuscript results)
+
 ##########
-
-
-
-
