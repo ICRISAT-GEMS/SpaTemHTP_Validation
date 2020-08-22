@@ -38,7 +38,14 @@ library(plyr)
 library(outliers)
 library(R.utils)
 library(dplyr)
-
+library(kernlab)
+library(fpc)
+library(tidyverse)
+library(cluster)
+library(xts)
+library(ecp)
+library(ggplot2)
+library(lubridate)
 
 # Cross-validation
 ##################
