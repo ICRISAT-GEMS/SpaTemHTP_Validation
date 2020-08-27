@@ -330,6 +330,24 @@ for(r in 1:n_data){
 # CV results processing
 #######################
 
+# Structure of the CV results to be use for further processing uncomment to use it
+
+# data_id <- c("CP_E1_LA3D", "CP_E1_PH", "CP_E2_LA3D", "CP_E2_PH",
+#              "SG_E1_LA3D", "SG_E1_PH", "SG_E2_LA3D", "SG_E2_PH")
+# n_data <- length(data_id)
+# n_scen <- 9
+# n_rep <- 5
+# n_fold <- 10
+# 
+# pred_res <- vector(mode = 'list', length = n_data) # Precition ability results
+# he_res <- vector(mode = 'list', length = n_data) # heritability results
+# names(pred_res) <- names(he_res) <- data_id
+# 
+# for(i in 1:n_data){
+#   pred_res[[i]] <- matrix(runif(1), nrow = n_scen, ncol = n_rep*n_fold)
+#   he_res[[i]] <- matrix(runif(1), nrow = n_scen, ncol = n_rep*n_fold)
+# }
+
 n_scen <- 9
 
 res <- cor_res
@@ -594,9 +612,13 @@ for(i in 1:4){ # Iteration over the different combination of crop and trait
 res_TS <- res
 save(res_TS, file = './results/res_TS.RData')
 
+############
+
 
 # Between exp comparison results processing
 ###########################################
+
+load(file = './results/res_TS.RData')
 
 n_scen <- 9
 
@@ -606,6 +628,12 @@ rownames(betEx_t.testRES) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
                          "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
                          "S8", "S9", "Diff", "pVal")
 colnames(betEx_t.testRES) <- c('CP_LA3D', 'CP_PH', 'SG_LA3D', 'SG_PH') # 4 columns for each of the dataset
+
+### comments
+
+# scen_tab should be redefined here.
+
+# res_TS is a list of list. The iteration should therefore be adapted.
 
 for(i in 1:4)
 {
