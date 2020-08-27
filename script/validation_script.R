@@ -30,6 +30,7 @@ library(SpaTemHTP)
 
 
 # library(SpaTempHTP) change later when package is ready
+
 library(SpATS)
 library(lme4)
 library(VIM)
@@ -39,6 +40,14 @@ library(outliers)
 library(R.utils)
 library(dplyr)
 library(drc)
+library(kernlab)
+library(fpc)
+library(tidyverse)
+library(cluster)
+library(xts)
+library(ecp)
+library(ggplot2)
+library(lubridate)
 
 
 # Cross-validation
@@ -316,13 +325,176 @@ for(r in 1:n_data){
   
 } # End iteration over the different datasets
 
-### results processing
+###########
 
-# construction of the average table
+# CV results processing
+#######################
 
-# calculation of the t-test
+n_scen <- 9
 
-# Final ouput of this section should be the table 3 of the manuscript
+res <- cor_res
+res <- as.matrix(res)
+
+t.testRES <- as.data.frame(matrix(NA, nrow = 16, ncol = 2))
+rownames(t.testRES) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
+                         "MI_No", "MI_Yes", "MI_Diff", "MI_pVal",
+                         "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
+                         "S8", "S9", "Diff", "pVal")
+colnames(t.testRES) <- c("CPE2_LA3D_CORR", "CPE2_LA3D_H2") # 2 columns needed to store RMSE and H2 results
+
+
+### outlier vs no outliers ###
+
+res_yes <- res[scen_tab$out_det %in% 'yes', ]
+res_no <- res[scen_tab$out_det %in% 'no', ]
+
+# OL-t.test
+no_OL <- colMeans(res_yes)
+OL <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_OL, OL)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_OL, y = OL)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[1:4, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### miss imp vs no miss imp ###
+
+res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
+res_no <- res[scen_tab$miss_imp %in% 'no', ]
+
+# MICE-t.test
+no_MI <- colMeans(res_yes)
+MI <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_MI, MI)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_MI, y = MI)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[5:8, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### spatial corr vs no spatial corr ###
+
+res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
+res_no <- res[scen_tab$spat_adj %in% 'no', ]
+
+# SpATS-t.test
+no_SP <- colMeans(res_yes)
+SP <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_SP, SP)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_SP, y = SP)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[9:12, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### SpATS vs. S9 t.test ###
+S8 <- res[8, ]
+S9 <- res[9, ]
+trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
+y <- c(na.approx(S8), na.approx(S9))
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = S8, y = S9)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[13:16, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+
+
+### heritability
+res <- he_res
+res <- as.matrix(res)
+
+
+### outlier vs no outliers ###
+
+res_yes <- res[scen_tab$out_det %in% 'yes', ]
+res_no <- res[scen_tab$out_det %in% 'no', ]
+
+# OL-t.test
+no_OL <- colMeans(res_yes)
+OL <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_OL, OL)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_OL, y = OL)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[1:4, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### miss imp vs no miss imp ###
+
+res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
+res_no <- res[scen_tab$miss_imp %in% 'no', ]
+
+# MICE-t.test
+no_MI <- colMeans(res_yes)
+MI <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_MI, MI)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_MI, y = MI)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[5:8, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### spatial corr vs no spatial corr ###
+
+res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
+res_no <- res[scen_tab$spat_adj %in% 'no', ]
+
+# SpATS-t.test
+no_SP <- colMeans(res_yes)
+SP <- colMeans(res_no)
+trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+y <- c(no_SP, SP)
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = no_SP, y = SP)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[9:12, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+### SpATS vs. S9 t.test ###
+S8 <- res[8, ]
+S9 <- res[9, ]
+trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
+y <- c(na.approx(S8), na.approx(S9))
+aov.m <- anova(lm(y~trt_ind))
+aov_t.test <- t.test(x = S8, y = S9)
+Sum_of_Sqs <- aov.m$`Sum Sq`
+t_stat_val <- aov_t.test$statistic
+aov_p_val <- aov_t.test$p.value
+grp_means <- aov_t.test$estimate
+t.testRES[13:16, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+write.csv(t.testRES,  paste0(output.loc, '/CPE2_LA3D_t.testRES.csv'))
+
+# Final ouput of this section is the table 3 of the manuscript
+
 
 ###########
 
@@ -402,10 +574,10 @@ for(i in 1:4){ # Iteration over the different combination of crop and trait
         
         
         G_BLUES <- SpaTemHTP_proc(exp_des_data,
-                                    pheno_data = data[, (n_e_d_col+1):dim(data)[2]],
-                                    single_mixed_model = TRUE,
-                                    random = ~ rep +  rep:block + row_f + col_f,
-                                    plot = TRUE)
+                                  pheno_data = data[, (n_e_d_col+1):dim(data)[2]],
+                                  single_mixed_model = TRUE,
+                                  random = ~ rep +  rep:block + row_f + col_f,
+                                  plot = TRUE)
         
         res[[i]][[j]][[k]] <- G_BLUEs
         
@@ -422,15 +594,97 @@ for(i in 1:4){ # Iteration over the different combination of crop and trait
 res_TS <- res
 save(res_TS, file = './results/res_TS.RData')
 
-### results processing
 
-# construction of the average table. You can start from res_TS
-# (!For the moment, it does not contain the result of sc 9. I will add
-# them later)
+# Between exp comparison results processing
+###########################################
 
-# calculation of the t-test
+n_scen <- 9
 
-# Final ouput of this section should be the table 3 of the manuscript
+betEx_t.testRES <- as.data.frame(matrix(NA, nrow = 16, ncol = 4))
+rownames(betEx_t.testRES) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
+                         "MI_No", "MI_Yes", "MI_Diff", "MI_pVal",
+                         "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
+                         "S8", "S9", "Diff", "pVal")
+colnames(betEx_t.testRES) <- c('CP_LA3D', 'CP_PH', 'SG_LA3D', 'SG_PH') # 4 columns for each of the dataset
+
+for(i in 1:4)
+{
+
+  res <- res_TS[[i]] 
+  res <- as.matrix(res)
+
+	### outlier vs no outliers ###
+
+	res_yes <- res[scen_tab$out_det %in% 'yes', ]
+	res_no <- res[scen_tab$out_det %in% 'no', ]
+
+	# OL-t.test
+	no_OL <- colMeans(res_yes)
+	OL <- colMeans(res_no)
+	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+	y <- c(no_OL, OL)
+	aov.m <- anova(lm(y~trt_ind))
+	aov_t.test <- t.test(x = no_OL, y = OL)
+	Sum_of_Sqs <- aov.m$`Sum Sq`
+	t_stat_val <- aov_t.test$statistic
+	aov_p_val <- aov_t.test$p.value
+	grp_means <- aov_t.test$estimate
+	betEx_t.testRES[1:4, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+	### miss imp vs no miss imp ###
+
+	res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
+	res_no <- res[scen_tab$miss_imp %in% 'no', ]
+
+	# MICE-t.test
+	no_MI <- colMeans(res_yes)
+	MI <- colMeans(res_no)
+	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+	y <- c(no_MI, MI)
+	aov.m <- anova(lm(y~trt_ind))
+	aov_t.test <- t.test(x = no_MI, y = MI)
+	Sum_of_Sqs <- aov.m$`Sum Sq`
+	t_stat_val <- aov_t.test$statistic
+	aov_p_val <- aov_t.test$p.value
+	grp_means <- aov_t.test$estimate
+	betEx_t.testRES[5:8, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+	### spatial corr vs no spatial corr ###
+
+	res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
+	res_no <- res[scen_tab$spat_adj %in% 'no', ]
+
+	# SpATS-t.test
+	no_SP <- colMeans(res_yes)
+	SP <- colMeans(res_no)
+	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+	y <- c(no_SP, SP)
+	aov.m <- anova(lm(y~trt_ind))
+	aov_t.test <- t.test(x = no_SP, y = SP)
+	Sum_of_Sqs <- aov.m$`Sum Sq`
+	t_stat_val <- aov_t.test$statistic
+	aov_p_val <- aov_t.test$p.value
+	grp_means <- aov_t.test$estimate
+	betEx_t.testRES[9:12, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+
+	### SpATS vs. S9 t.test ###
+	S8 <- res[8, ]
+	S9 <- res[9, ]
+	trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
+	y <- c(na.approx(S8), na.approx(S9))
+	aov.m <- anova(lm(y~trt_ind))
+	aov_t.test <- t.test(x = S8, y = S9)
+	Sum_of_Sqs <- aov.m$`Sum Sq`
+	t_stat_val <- aov_t.test$statistic
+	aov_p_val <- aov_t.test$p.value
+	grp_means <- aov_t.test$estimate
+	betEx_t.testRES[13:16, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+
+}
+save(betEx_t.testRES, file = './results/betEx_t.testRES.RData')
 
 #######
 
@@ -587,7 +841,7 @@ g_means <- matrix(NA, n_geno, n_days)
 for(i in 1:dim(g_means)[2]){
   
   g_av <- tapply(X = data[, i + 5], INDEX = geno_id,
-                         FUN = function(x) mean(x, na.rm = TRUE))
+                 FUN = function(x) mean(x, na.rm = TRUE))
   g_means[, i] <- g_av
   
 }
@@ -635,23 +889,190 @@ for(i in 1:5){
 ########
 
 
-# Clustering
-############
-
-### Soumya (Only the results from the manuscript. Wait for choice to keep clustering)
-
-#########
-
 # Determination of optimal time window (OTW)
 ############################################
 
-### Soumya (Only the manuscript results)
+# For each crop-type in an experiment find the OTW, e.g. CP_E2 
+
+cpaRES <- OTW <- list()
+
+for (i in 1:2){
+
+  cpaip <- as.data.frame(res[[i]][[2]][[4]])
+  
+  deflt <- 3
+  
+  blueKKmeans<-kkmeans(as.matrix(cpaip), deflt, 
+                       kernel="polydot",alg="kkmeans",p=1, na.action=na.omit)
+  blue.res<-as.data.frame(centers(blueKKmeans))
+  
+  colnames(blue.res)<-colnames(cpaip)
+  
+  clust_diff<-matrix(nrow = 1, ncol = ncol(blue.res))
+  
+  for(i in 1:ncol(blue.res))
+  {
+    # clust_diff[1,i]<-(abs(blue.res[1,i]-blue.res[2,i]) + abs(blue.res[1,i]-blue.res[3,i]) + abs(blue.res[3,i]-blue.res[2,i]))
+    clust_diff[1,i]<-(sum(dist(blue.res[,i], method = "euclidean")))
+  }
+  
+  colnames(clust_diff) <- colnames(blue.res)
+  
+  
+  ### Start CPA for OTW identification
+  
+  ip.cpa<-cbind(t(clust_diff), Herit.Res)
+  colnames(ip.cpa)[1]<-"BLUE_CD"
+  colnames(ip.cpa)[2]<-"h2"
+  head(ip.cpa)
+  
+  ip.cpa.ts <- xts(ip.cpa, order.by=as.Date(rownames(ip.cpa), "%Y-%m-%d"))
+    
+  ecp.ph<-e.cp3o(Z=ip.cpa.ts, K=4, minsize=3, alpha=1, verbose=FALSE)
+  
+  E<-ecp.ph$estimates
+  
+  dates<-rownames(ip.cpa)
+  bp.date<-xts(dates[E], order.by = as.Date(dates[E], "%Y-%m-%d"))
+  
+  cpaRES[[i]] <- list(ip.cpa.ts=ip.cpa.ts, bp.date=bp.date)
+  
+  range01 <- function(x) {(x-min(x))/(max(x) - min(x))}
+  
+  # Find OTW
+  TWs <- length(bp.date)+1
+  TWmetr <- as.data.frame(matrix(NA, nrow = 3, ncol = TWs))
+  colnames(TWmetr) <- paste0("TW-", 1:TWs)
+  rownames(TWmetr) <- c("medCD", "slpCD", "medH2")
+  
+  for(i in 1:TWs){
+    
+    if(i == 1){
+      r.ind <- which(dates %in% bp.date[i])
+      tmp.tw <- ip.cpa.ts[1:r.ind, ]
+      
+          } else if (i == TWs){
+            r.ind <- which(dates %in% bp.date[i-1])
+            tmp.tw <- ip.cpa.ts[r.ind:nrow(ip.cpa.ts), ]
+        
+             } else {
+               r.ind1 <- which(dates %in% bp.date[i-1])
+               r.ind2 <- which(dates %in% bp.date[i])
+               tmp.tw <- ip.cpa.ts[(r.ind1) : (r.ind2-1), ]
+               
+               } # end if-else
+    
+    # get the median of cluster-distance
+    TWmetr[1 ,i] <- round(mean(tmp.tw$BLUE_CD), 2)
+    # get the slope of cluster-distance
+    l.mod <- lm(tmp.tw$BLUE_CD ~ c(1:dim(tmp.tw)[1]))
+    l.mod.st <- summary(l.mod)
+    TWmetr[2 ,i] <- l.mod.st$coefficients[2, 1]
+    # get the median of heritability
+    TWmetr[3 ,i] <- round(mean(tmp.tw$h2), 2)
+    
+  } # end for loop
+  
+  TWmetr.sc <- as.data.frame(t(apply(TWmetr, 1, range01)))
+  OTWid <- which.max(apply(TWmetr.sc[c(1,3), ], 2, sum))
+  
+  BLUEs <- x$BLUEs
+  
+  if (OTWid == 1) {
+    c2 <- bp.date[(OTWid)]
+    col2 <- which(colnames(BLUEs) %in% as.character(c2))
+    OTW[[i]] <- BLUEs[ ,1:(col2)]
+  
+    } else if (OTWid == length(bp.date)) {
+      c1 <- bp.date[(OTWid)]
+      col1 <- which(colnames(BLUEs) %in% as.character(c1))
+      OTW[[i]] <- BLUEs[ ,(col1:ncol(BLUEs))]
+    
+      } else {
+        c1 <- bp.date[(OTWid-1)]
+        c2 <- bp.date[(OTWid)]
+        
+        col1 <- which(colnames(BLUEs) %in% as.character(c1))
+        col2 <- which(colnames(BLUEs) %in% as.character(c2))
+        
+        OTW[[i]] <- BLUEs[ ,col1:(col2-1)]
+        
+      }
+
+save(OTW, file = './results/OTW.RData')
 
 ##########
 
-# Gc x TW model
+
+# Clustering
 ###############
 
-### Soumya (Only the manuscript results)
+# Cluster using both the traits, LA3D and PH
+clusDF <- rowmeans(OTW[[1]]) + rowmeans(OTW[[2]])
+pc <- princomp(clusDF)
+plot(pc)
+
+# Scale
+data2 <- data.frame(scale(clusDF))
+# Verify variance is uniform
+plot(sapply(data2, var))
+
+# Proceed with principal components
+pc <- princomp(data2)
+plot(pc)
+plot(pc, type='l')
+summary(pc)
+
+cp.res <- pc$scores
+
+# First for principal components
+comp <- data.frame(pc$scores[,1:2])
+# Plot
+plot(comp, pch=16, col=rgb(0,0,0,0.5))
+# Apply k-means with k=4
+k <- kmeans(comp, 3, nstart=25, iter.max=1000)
+palette(alpha(brewer.pal(9,'Set1'), 0.5))
+plot(comp, col=k$clust, pch=16)
+
+cp.clusID <- as.data.frame(k$cluster)
+
+save(as.data.frame(cbind(cp.res, cp.clusID, rownames(OTW[[1]]))), file = './results/FinalClusters.RData')
+
+
+##########
+
+
+
+# Gc x TW model
+###############
+  	
+for (i in 1:length(cpaRES)) { # For each CP_E2 trait
+
+allData <- as.data.frame(res[[i]][[2]][[4]])
+
+    bp.date <- cpaRES[[i]]$bp.date
+    TWs <- length(bp.date)+1
+        
+    aovDF <- data.frame(Trait = c(unlist(allData[,1:bp.date[1]])), 
+	                Geno = rep(cp.clusID, ncol(allData[,1:bp.date[1]]), 
+                        TW = rep(1, nrow(allData)*ncol(allData[,1:bp.date[1]]))
+  	  
+    for(j in 2:length(bp.date)-1) {
+	
+	tmp <- data.frame(Trait = c(unlist(allData[ ,bp.date[j]:bp.date[j+1]])), 
+	                  Geno = rep(cp.clusID, ncol(allData[ ,bp.date[j]:bp.date[j+1]), 
+                          TW = rep(j, nrow(allData)*ncol(allData[ ,bp.date[j]:bp.date[j+1]))
+
+	aovDF <- as.data.frame(rbind(aovDF, tmp)) }
+
+	tmp1 <- data.frame(Trait = c(unlist(allData[ ,bp.date[length(bp.date)]:ncol[allData]])), 
+                           Geno = rep(cp.clusID, ncol(allData[ ,bp.date[length(bp.date)]:ncol[allData]], 
+                           TW = rep(length(bp.date)+1, nrow(allData)*ncol(allData[ ,bp.date[length(bp.date)]:ncol[allData]))
+	aovDF <- as.data.frame(rbind(aovDF, tmp1))
+
+        aov.model<-aov(Trait ~ Geno + TW + Geno*TW, data = aovDF)
+
+summary(aov.model)
+}
 
 ##########
