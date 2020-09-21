@@ -10,15 +10,10 @@
 ################################################################################
 ################################################################################
 
-setwd('F:/ICRISAT/Phenotyping/LeasyScan_article/SpaTemHTP_Validation')
 # set your working directory here (change later)
+setwd('G:/ICRISAT/Phenotyping/LeasyScan_article/SpaTemHTP_Validation')
 
 # Library
-
-# source('./functions/detect_OL_Boxplot.R') ### package functions
-# source('./functions/GapFill_mice.R')
-# source('./functions/det_OL_Box_vect.R')
-# source('./functions/geno_comp_miss.R')
 
 # download the SpaTemHTP package from the github repository
 # https://github.com/ICRISAT-GEMS/SpaTemHTP
@@ -27,9 +22,6 @@ setwd('F:/ICRISAT/Phenotyping/LeasyScan_article/SpaTemHTP_Validation')
 # devtools::install_github("ICRISAT-GEMS/SpaTemHTP")
 
 library(SpaTemHTP)
-
-
-# library(SpaTempHTP) change later when package is ready
 
 library(SpATS)
 library(lme4)
@@ -41,6 +33,7 @@ library(R.utils)
 library(dplyr)
 library(drc)
 library(kernlab)
+library(Metrics)
 library(fpc)
 library(tidyverse)
 library(cluster)
@@ -48,6 +41,7 @@ library(xts)
 library(ecp)
 library(ggplot2)
 library(lubridate)
+library(stringr)
 
 
 # Cross-validation
@@ -330,188 +324,130 @@ for(r in 1:n_data){
 # CV results processing
 #######################
 
-# Structure of the CV results to be use for further processing uncomment to use it
+cor_res_tab <- vector(mode = 'list', length = length(pred_res))
+he_res_tab <- vector(mode = 'list', length = length(he_res))
 
-# data_id <- c("CP_E1_LA3D", "CP_E1_PH", "CP_E2_LA3D", "CP_E2_PH",
-#              "SG_E1_LA3D", "SG_E1_PH", "SG_E2_LA3D", "SG_E2_PH")
-# n_data <- length(data_id)
-# n_scen <- 9
-# n_rep <- 5
-# n_fold <- 10
-# 
-# pred_res <- vector(mode = 'list', length = n_data) # Precition ability results
-# he_res <- vector(mode = 'list', length = n_data) # heritability results
-# names(pred_res) <- names(he_res) <- data_id
-# 
-# for(i in 1:n_data){
-#   pred_res[[i]] <- matrix(runif(1), nrow = n_scen, ncol = n_rep*n_fold)
-#   he_res[[i]] <- matrix(runif(1), nrow = n_scen, ncol = n_rep*n_fold)
-# }
-
-n_scen <- 9
-
-res <- cor_res
-res <- as.matrix(res)
-
-t.testRES <- as.data.frame(matrix(NA, nrow = 16, ncol = 2))
-rownames(t.testRES) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
-                         "MI_No", "MI_Yes", "MI_Diff", "MI_pVal",
-                         "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
-                         "S8", "S9", "Diff", "pVal")
-colnames(t.testRES) <- c("CPE2_LA3D_CORR", "CPE2_LA3D_H2") # 2 columns needed to store RMSE and H2 results
-
-
-### outlier vs no outliers ###
-
-res_yes <- res[scen_tab$out_det %in% 'yes', ]
-res_no <- res[scen_tab$out_det %in% 'no', ]
-
-# OL-t.test
-no_OL <- colMeans(res_yes)
-OL <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_OL, OL)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_OL, y = OL)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[1:4, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### miss imp vs no miss imp ###
-
-res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
-res_no <- res[scen_tab$miss_imp %in% 'no', ]
-
-# MICE-t.test
-no_MI <- colMeans(res_yes)
-MI <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_MI, MI)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_MI, y = MI)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[5:8, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### spatial corr vs no spatial corr ###
-
-res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
-res_no <- res[scen_tab$spat_adj %in% 'no', ]
-
-# SpATS-t.test
-no_SP <- colMeans(res_yes)
-SP <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_SP, SP)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_SP, y = SP)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[9:12, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### SpATS vs. S9 t.test ###
-S8 <- res[8, ]
-S9 <- res[9, ]
-trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
-y <- c(na.approx(S8), na.approx(S9))
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = S8, y = S9)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[13:16, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-
-
-### heritability
-res <- he_res
-res <- as.matrix(res)
-
-
-### outlier vs no outliers ###
-
-res_yes <- res[scen_tab$out_det %in% 'yes', ]
-res_no <- res[scen_tab$out_det %in% 'no', ]
-
-# OL-t.test
-no_OL <- colMeans(res_yes)
-OL <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_OL, OL)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_OL, y = OL)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[1:4, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### miss imp vs no miss imp ###
-
-res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
-res_no <- res[scen_tab$miss_imp %in% 'no', ]
-
-# MICE-t.test
-no_MI <- colMeans(res_yes)
-MI <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_MI, MI)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_MI, y = MI)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[5:8, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### spatial corr vs no spatial corr ###
-
-res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
-res_no <- res[scen_tab$spat_adj %in% 'no', ]
-
-# SpATS-t.test
-no_SP <- colMeans(res_yes)
-SP <- colMeans(res_no)
-trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-y <- c(no_SP, SP)
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = no_SP, y = SP)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[9:12, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-### SpATS vs. S9 t.test ###
-S8 <- res[8, ]
-S9 <- res[9, ]
-trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
-y <- c(na.approx(S8), na.approx(S9))
-aov.m <- anova(lm(y~trt_ind))
-aov_t.test <- t.test(x = S8, y = S9)
-Sum_of_Sqs <- aov.m$`Sum Sq`
-t_stat_val <- aov_t.test$statistic
-aov_p_val <- aov_t.test$p.value
-grp_means <- aov_t.test$estimate
-t.testRES[13:16, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-write.csv(t.testRES,  paste0(output.loc, '/CPE2_LA3D_t.testRES.csv'))
-
-# Final ouput of this section is the table 3 of the manuscript
+for(k in 1:length(pred_res)){
+  
+  res <- pred_res[[k]] # Need to iterate over the elements of the list
+  
+  tab_cor_h2_res <- as.data.frame(matrix(NA, nrow = 16, ncol = 2))
+  rownames(tab_cor_h2_res) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
+                                "MI_No", "MI_Yes", "MI_Diff", "MI_pVal",
+                                "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
+                                "S8", "S9", "Diff", "pVal")
+  
+  colnames(tab_cor_h2_res) <- c("CORR", "H2") # 2 columns needed to store RMSE and H2 results
+  
+  trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
+  
+  ### outlier vs no outliers ###
+  res_yes <- res[c(strat_tab$out_det, FALSE), ]
+  res_no <- res[c(!strat_tab$out_det, FALSE), ]
+  
+  no_OL <- colMeans(res_yes)
+  OL <- colMeans(res_no)
+  y <- c(no_OL, OL)
+  aov_t.test <- t.test(x = no_OL, y = OL)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[1:4, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### miss imp vs no miss imp ###
+  res_yes <- res[c(strat_tab$miss_imp, FALSE), ]
+  res_no <- res[c(!strat_tab$miss_imp, FALSE), ]
+  
+  no_MI <- colMeans(res_yes)
+  MI <- colMeans(res_no)
+  y <- c(no_MI, MI)
+  aov_t.test <- t.test(x = no_MI, y = MI)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[5:8, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### spatial corr vs no spatial corr ###
+  res_yes <- res[c(strat_tab$spat_adj, FALSE), ]
+  res_no <- res[c(!strat_tab$spat_adj, FALSE), ]
+  
+  no_SP <- colMeans(res_yes)
+  SP <- colMeans(res_no)
+  y <- c(no_SP, SP)
+  aov_t.test <- t.test(x = no_SP, y = SP)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[9:12, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### SpATS vs. S9 t.test ###
+  S8 <- res[8, ]
+  S9 <- res[9, ]
+  y <- c(S8, S9)
+  aov_t.test <- t.test(x = S8, y = S9)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[13:16, 1] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### heritability
+  
+  res <- he_res[[k]]
+  
+  ### outlier vs no outliers ###
+  res_yes <- res[c(strat_tab$out_det, FALSE), ]
+  res_no <- res[c(!strat_tab$out_det, FALSE), ]
+  
+  no_OL <- colMeans(res_yes)
+  OL <- colMeans(res_no)
+  y <- c(no_OL, OL)
+  aov_t.test <- t.test(x = no_OL, y = OL)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[1:4, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### miss imp vs no miss imp ###
+  res_yes <- res[c(strat_tab$miss_imp, FALSE), ]
+  res_no <- res[c(!strat_tab$miss_imp, FALSE), ]
+  
+  no_MI <- colMeans(res_yes)
+  MI <- colMeans(res_no)
+  y <- c(no_MI, MI)
+  aov_t.test <- t.test(x = no_MI, y = MI)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[5:8, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### spatial corr vs no spatial corr ###
+  res_yes <- res[c(strat_tab$spat_adj, FALSE), ]
+  res_no <- res[c(!strat_tab$spat_adj, FALSE), ]
+  
+  no_SP <- colMeans(res_yes)
+  SP <- colMeans(res_no)
+  y <- c(no_SP, SP)
+  aov_t.test <- t.test(x = no_SP, y = SP)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[9:12, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  
+  ### SpATS vs. S9 t.test ###
+  S8 <- res[8, ]
+  S9 <- res[9, ]
+  y <- c(S8, S9)
+  aov_t.test <- t.test(x = S8, y = S9)
+  aov_p_val <- aov_t.test$p.value
+  grp_means <- aov_t.test$estimate
+  tab_cor_h2_res[13:16, 2] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
+  
+  # store results
+  
+  cor_res_tab[[k]] <- tab_cor_h2_res[, 1]
+  he_res_tab[[k]] <- tab_cor_h2_res[, 2]
+  
+}
 
 
 ###########
@@ -614,108 +550,6 @@ save(res_TS, file = './results/res_TS.RData')
 
 ############
 
-
-# Between exp comparison results processing
-###########################################
-
-load(file = './results/res_TS.RData')
-
-n_scen <- 9
-
-betEx_t.testRES <- as.data.frame(matrix(NA, nrow = 16, ncol = 4))
-rownames(betEx_t.testRES) <- c("OL_No", "OL_Yes", "OL_Diff", "OL_pVal",
-                         "MI_No", "MI_Yes", "MI_Diff", "MI_pVal",
-                         "SP_No", "SP_Yes", "SP_Diff", "SP_pVal",
-                         "S8", "S9", "Diff", "pVal")
-colnames(betEx_t.testRES) <- c('CP_LA3D', 'CP_PH', 'SG_LA3D', 'SG_PH') # 4 columns for each of the dataset
-
-### comments
-
-# scen_tab should be redefined here.
-
-# res_TS is a list of list. The iteration should therefore be adapted.
-
-for(i in 1:4)
-{
-
-  res <- res_TS[[i]] 
-  res <- as.matrix(res)
-
-	### outlier vs no outliers ###
-
-	res_yes <- res[scen_tab$out_det %in% 'yes', ]
-	res_no <- res[scen_tab$out_det %in% 'no', ]
-
-	# OL-t.test
-	no_OL <- colMeans(res_yes)
-	OL <- colMeans(res_no)
-	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-	y <- c(no_OL, OL)
-	aov.m <- anova(lm(y~trt_ind))
-	aov_t.test <- t.test(x = no_OL, y = OL)
-	Sum_of_Sqs <- aov.m$`Sum Sq`
-	t_stat_val <- aov_t.test$statistic
-	aov_p_val <- aov_t.test$p.value
-	grp_means <- aov_t.test$estimate
-	betEx_t.testRES[1:4, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-	### miss imp vs no miss imp ###
-
-	res_yes <- res[scen_tab$miss_imp %in% 'yes', ]
-	res_no <- res[scen_tab$miss_imp %in% 'no', ]
-
-	# MICE-t.test
-	no_MI <- colMeans(res_yes)
-	MI <- colMeans(res_no)
-	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-	y <- c(no_MI, MI)
-	aov.m <- anova(lm(y~trt_ind))
-	aov_t.test <- t.test(x = no_MI, y = MI)
-	Sum_of_Sqs <- aov.m$`Sum Sq`
-	t_stat_val <- aov_t.test$statistic
-	aov_p_val <- aov_t.test$p.value
-	grp_means <- aov_t.test$estimate
-	betEx_t.testRES[5:8, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-	### spatial corr vs no spatial corr ###
-
-	res_yes <- res[scen_tab$spat_adj %in% 'yes', ]
-	res_no <- res[scen_tab$spat_adj %in% 'no', ]
-
-	# SpATS-t.test
-	no_SP <- colMeans(res_yes)
-	SP <- colMeans(res_no)
-	trt_ind <- factor(c(rep('cont', ncol(res)), rep('trt', ncol(res))))
-	y <- c(no_SP, SP)
-	aov.m <- anova(lm(y~trt_ind))
-	aov_t.test <- t.test(x = no_SP, y = SP)
-	Sum_of_Sqs <- aov.m$`Sum Sq`
-	t_stat_val <- aov_t.test$statistic
-	aov_p_val <- aov_t.test$p.value
-	grp_means <- aov_t.test$estimate
-	betEx_t.testRES[9:12, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-
-	### SpATS vs. S9 t.test ###
-	S8 <- res[8, ]
-	S9 <- res[9, ]
-	trt_ind <- factor(c(rep('cont', length(na.approx(S8))), rep('trt', length(na.approx(S9)))))
-	y <- c(na.approx(S8), na.approx(S9))
-	aov.m <- anova(lm(y~trt_ind))
-	aov_t.test <- t.test(x = S8, y = S9)
-	Sum_of_Sqs <- aov.m$`Sum Sq`
-	t_stat_val <- aov_t.test$statistic
-	aov_p_val <- aov_t.test$p.value
-	grp_means <- aov_t.test$estimate
-	betEx_t.testRES[13:16, i] <- round(c(grp_means[1], grp_means[2], (grp_means[1]-grp_means[2]), aov_p_val), 2)
-
-}
-save(betEx_t.testRES, file = './results/betEx_t.testRES.RData')
-
-#######
-
 # Assessment of genotype growth pattern 
 ####################################### 
 
@@ -787,8 +621,8 @@ save(SG_log_curve, file = './results/SG_log_curve.RData')
 
 ###########
 
-# Plots of the genotype BLUEs TS (Figure 2)
-###########################################
+# Plots of the genotype BLUEs TS
+################################
 
 load(file = './results/res_TS.RData')
 
@@ -916,191 +750,271 @@ for(i in 1:5){
 
 ########
 
-
 # Determination of optimal time window (OTW)
 ############################################
 
-# For each crop-type in an experiment find the OTW, e.g. CP_E2 
+load(file = './results/res_TS.RData')
 
-cpaRES <- OTW <- list()
+### CPE2-LA3D
 
-for (i in 1:2){
+res <- res_TS$CP_LA3D$E2$S4
 
-  cpaip <- as.data.frame(res[[i]][[2]][[4]])
+data <- res
+dates <- substr(colnames(data), 2, nchar(colnames(data)))
+dates <- str_replace_all(string = dates, pattern = '\\.', replacement = '-')
+colnames(data) <- dates
+h2 <- c(seq(0.7, 0.89, 0.01), seq(0.9, 0.73, -0.01)) ### replace by 'true' values
+
+OTW <- cpa_getOTW(data = data, h2 = h2) ### make sure it works
+
+### SGE2-PH
+
+res <- res_TS$SG_PH$E2$S4
+
+data <- res
+dates <- c(paste0(22:31,'-10-2015'), paste0(1:12,'-11-2015'))
+colnames(data) <- dates
+h2 <- c(seq(0.66, 0.88, 0.02), seq(0.9, 0.72, -0.02)) ### replace by 'true' values
+
+OTW <- cpa_getOTW(data = data, h2 = h2)
+
+##########
+
+
+# Simulation 
+############
+
+source('./functions/functions_simulation.R')
+
+# load reference results
+load('./results/G_BLUEs_ref.RData')
+
+# load data
+data(SG_PH_data)
+
+SG_PH_data$col_f <- factor(SG_PH_data$col)
+SG_PH_data$row_f <- factor(SG_PH_data$row)
+
+SG_PH_data$rep <- factor(SG_PH_data$rep)
+SG_PH_data$block <- factor(SG_PH_data$block)
+
+exp_des_data = SG_PH_data[, c("row", "col", "row_f", "col_f","genotype",
+                              "rep", "block")]
+
+row_names <- c('Ex_miss:no','Ex_miss:out', 'Ex_miss:imp', 'Ex_miss:out+imp', 'Ex_miss:S9',
+               'Ex_nois:no','Ex_nois:out', 'Ex_nois:imp', 'Ex_nois:out+imp', 'Ex_nois:S9',
+               'Ex_n+m:no','Ex_n+m:out', 'Ex_n+m:imp', 'Ex_n+m:out+imp', 'Ex_n+m:S9')
+
+ref_per <- c(0.1, 0.2, 0.3, 0.4, 0.5)
+n_rep <- 10
+
+res_list <- vector(mode = 'list', length = 5)
+names(res_list) <- c('10%', '20%', '30%', '40%', '50%')
+
+for(j in 1:length(res_list)){
   
-  deflt <- 3
+  RMSE_res <- matrix(NA, nrow = 15, ncol = n_rep)
+  cor_res <- matrix(NA, nrow = 15, ncol = n_rep)
   
-  blueKKmeans<-kkmeans(as.matrix(cpaip), deflt, 
-                       kernel="polydot",alg="kkmeans",p=1, na.action=na.omit)
-  blue.res<-as.data.frame(centers(blueKKmeans))
+  per_ref <- ref_per[j]
   
-  colnames(blue.res)<-colnames(cpaip)
-  
-  clust_diff<-matrix(nrow = 1, ncol = ncol(blue.res))
-  
-  for(i in 1:ncol(blue.res))
-  {
-    # clust_diff[1,i]<-(abs(blue.res[1,i]-blue.res[2,i]) + abs(blue.res[1,i]-blue.res[3,i]) + abs(blue.res[3,i]-blue.res[2,i]))
-    clust_diff[1,i]<-(sum(dist(blue.res[,i], method = "euclidean")))
+  for(i in 1:n_rep){
+    
+    row_id <- 1
+    
+    ### modify the data: Extra missing
+    
+    pheno_data <- add_miss(x = SG_PH_data[, 6:25], per = per_ref)
+    
+    ## detection
+    # out: no; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('no no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    
+    # out: yes; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('yes no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: no; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('no yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: yes; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('yes yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # S9
+    res <- SimVal_proc(exp_des_data = exp_des_data, single_mixed_model = TRUE,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print('S9')
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    ### added noise
+    
+    n_data <- add_noise2(x = SG_PH_data[, 6:25], per = per_ref)
+    pheno_data <- n_data$pheno_data
+    
+    ## detection
+    # out: no; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('no no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    
+    # out: yes; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('yes no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: no; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('no yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: yes; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('yes yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # S9
+    res <- SimVal_proc(exp_des_data = exp_des_data, single_mixed_model = TRUE,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print('S9')
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    ### added missing + noise
+    
+    n_data <- add_noise2(x = SG_PH_data[, 6:25], per = per_ref)
+    pheno_data <- add_miss(x = n_data$pheno_data, per = per_ref,
+                           out_pos = n_data$out_pos)
+    
+    ## detection
+    # out: no; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('no no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    
+    # out: yes; imp: no
+    res <- SimVal_proc(exp_des_data = exp_des_data,
+                       pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    print(c('yes no'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: no; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('no yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # out: yes; imp: yes
+    res <- SimVal_proc(exp_des_data = exp_des_data, pheno_data = pheno_data,
+                       out_det = TRUE, miss_imp = TRUE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print(c('yes yes'))
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    # S9
+    res <- SimVal_proc(exp_des_data = exp_des_data, single_mixed_model = TRUE,
+                       pheno_data = pheno_data,
+                       out_det = FALSE, miss_imp = FALSE, ref_day = 15,
+                       G_BLUEs_ref = G_BLUEs_ref)
+    
+    print('S9')
+    RMSE_res[row_id, i] <- res$RMSE; print(res$RMSE)
+    cor_res[row_id, i] <- res$cor; print(res$cor)
+    row_id <- row_id + 1
+    
+    print(paste('round', i))
+    
   }
   
-  colnames(clust_diff) <- colnames(blue.res)
+  res_tab_RMSE <- data.frame(RMSE = round(sqrt(rowSums(RMSE_res, na.rm = TRUE)), 1))
+  res_tab_cor <- data.frame(cor = round(rowMeans(cor_res, na.rm = TRUE), 3))
   
+  rownames(res_tab_RMSE) <-  rownames(res_tab_cor) <- row_names
   
-  ### Start CPA for OTW identification
+  res_list[[j]] <- list(res_tab_RMSE, res_tab_cor)
   
-  ip.cpa<-cbind(t(clust_diff), Herit.Res)
-  colnames(ip.cpa)[1]<-"BLUE_CD"
-  colnames(ip.cpa)[2]<-"h2"
-  head(ip.cpa)
+  print(paste('end', per_ref))
   
-  ip.cpa.ts <- xts(ip.cpa, order.by=as.Date(rownames(ip.cpa), "%Y-%m-%d"))
-    
-  ecp.ph<-e.cp3o(Z=ip.cpa.ts, K=4, minsize=3, alpha=1, verbose=FALSE)
-  
-  E<-ecp.ph$estimates
-  
-  dates<-rownames(ip.cpa)
-  bp.date<-xts(dates[E], order.by = as.Date(dates[E], "%Y-%m-%d"))
-  
-  cpaRES[[i]] <- list(ip.cpa.ts=ip.cpa.ts, bp.date=bp.date)
-  
-  range01 <- function(x) {(x-min(x))/(max(x) - min(x))}
-  
-  # Find OTW
-  TWs <- length(bp.date)+1
-  TWmetr <- as.data.frame(matrix(NA, nrow = 3, ncol = TWs))
-  colnames(TWmetr) <- paste0("TW-", 1:TWs)
-  rownames(TWmetr) <- c("medCD", "slpCD", "medH2")
-  
-  for(i in 1:TWs){
-    
-    if(i == 1){
-      r.ind <- which(dates %in% bp.date[i])
-      tmp.tw <- ip.cpa.ts[1:r.ind, ]
-      
-          } else if (i == TWs){
-            r.ind <- which(dates %in% bp.date[i-1])
-            tmp.tw <- ip.cpa.ts[r.ind:nrow(ip.cpa.ts), ]
-        
-             } else {
-               r.ind1 <- which(dates %in% bp.date[i-1])
-               r.ind2 <- which(dates %in% bp.date[i])
-               tmp.tw <- ip.cpa.ts[(r.ind1) : (r.ind2-1), ]
-               
-               } # end if-else
-    
-    # get the median of cluster-distance
-    TWmetr[1 ,i] <- round(mean(tmp.tw$BLUE_CD), 2)
-    # get the slope of cluster-distance
-    l.mod <- lm(tmp.tw$BLUE_CD ~ c(1:dim(tmp.tw)[1]))
-    l.mod.st <- summary(l.mod)
-    TWmetr[2 ,i] <- l.mod.st$coefficients[2, 1]
-    # get the median of heritability
-    TWmetr[3 ,i] <- round(mean(tmp.tw$h2), 2)
-    
-  } # end for loop
-  
-  TWmetr.sc <- as.data.frame(t(apply(TWmetr, 1, range01)))
-  OTWid <- which.max(apply(TWmetr.sc[c(1,3), ], 2, sum))
-  
-  BLUEs <- x$BLUEs
-  
-  if (OTWid == 1) {
-    c2 <- bp.date[(OTWid)]
-    col2 <- which(colnames(BLUEs) %in% as.character(c2))
-    OTW[[i]] <- BLUEs[ ,1:(col2)]
-  
-    } else if (OTWid == length(bp.date)) {
-      c1 <- bp.date[(OTWid)]
-      col1 <- which(colnames(BLUEs) %in% as.character(c1))
-      OTW[[i]] <- BLUEs[ ,(col1:ncol(BLUEs))]
-    
-      } else {
-        c1 <- bp.date[(OTWid-1)]
-        c2 <- bp.date[(OTWid)]
-        
-        col1 <- which(colnames(BLUEs) %in% as.character(c1))
-        col2 <- which(colnames(BLUEs) %in% as.character(c2))
-        
-        OTW[[i]] <- BLUEs[ ,col1:(col2-1)]
-        
-      }
-
-save(OTW, file = './results/OTW.RData')
-
-##########
-
-
-# Clustering
-###############
-
-# Cluster using both the traits, LA3D and PH
-clusDF <- rowmeans(OTW[[1]]) + rowmeans(OTW[[2]])
-pc <- princomp(clusDF)
-plot(pc)
-
-# Scale
-data2 <- data.frame(scale(clusDF))
-# Verify variance is uniform
-plot(sapply(data2, var))
-
-# Proceed with principal components
-pc <- princomp(data2)
-plot(pc)
-plot(pc, type='l')
-summary(pc)
-
-cp.res <- pc$scores
-
-# First for principal components
-comp <- data.frame(pc$scores[,1:2])
-# Plot
-plot(comp, pch=16, col=rgb(0,0,0,0.5))
-# Apply k-means with k=4
-k <- kmeans(comp, 3, nstart=25, iter.max=1000)
-palette(alpha(brewer.pal(9,'Set1'), 0.5))
-plot(comp, col=k$clust, pch=16)
-
-cp.clusID <- as.data.frame(k$cluster)
-
-save(as.data.frame(cbind(cp.res, cp.clusID, rownames(OTW[[1]]))), file = './results/FinalClusters.RData')
-
-
-##########
-
-
-
-# Gc x TW model
-###############
-  	
-for (i in 1:length(cpaRES)) { # For each CP_E2 trait
-
-allData <- as.data.frame(res[[i]][[2]][[4]])
-
-    bp.date <- cpaRES[[i]]$bp.date
-    TWs <- length(bp.date)+1
-        
-    aovDF <- data.frame(Trait = c(unlist(allData[,1:bp.date[1]])), 
-	                Geno = rep(cp.clusID, ncol(allData[,1:bp.date[1]]), 
-                        TW = rep(1, nrow(allData)*ncol(allData[,1:bp.date[1]]))
-  	  
-    for(j in 2:length(bp.date)-1) {
-	
-	tmp <- data.frame(Trait = c(unlist(allData[ ,bp.date[j]:bp.date[j+1]])), 
-	                  Geno = rep(cp.clusID, ncol(allData[ ,bp.date[j]:bp.date[j+1]), 
-                          TW = rep(j, nrow(allData)*ncol(allData[ ,bp.date[j]:bp.date[j+1]))
-
-	aovDF <- as.data.frame(rbind(aovDF, tmp)) }
-
-	tmp1 <- data.frame(Trait = c(unlist(allData[ ,bp.date[length(bp.date)]:ncol[allData]])), 
-                           Geno = rep(cp.clusID, ncol(allData[ ,bp.date[length(bp.date)]:ncol[allData]], 
-                           TW = rep(length(bp.date)+1, nrow(allData)*ncol(allData[ ,bp.date[length(bp.date)]:ncol[allData]))
-	aovDF <- as.data.frame(rbind(aovDF, tmp1))
-
-        aov.model<-aov(Trait ~ Geno + TW + Geno*TW, data = aovDF)
-
-summary(aov.model)
 }
 
-##########
+### results table
+
+gen_res_cor <- cbind(res_list[[1]][[2]], res_list[[2]][[2]], res_list[[3]][[2]],
+                     res_list[[4]][[2]], res_list[[5]][[2]])
+colnames(gen_res_cor) <- c('10%', '20%', '30%', '40%', '50%')
+
+########
